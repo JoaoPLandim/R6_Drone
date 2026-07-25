@@ -38,6 +38,22 @@ app.get("/api/health", (req, res) => {
   res.json({ ok: true, service: "R6_Drone-backend" });
 });
 
+//cams
+app.get("api/cameras", (req, res) => {
+    const cameras = db.prepare("SELECT * FROM cameras ORDER BY id").all();
+    res.json(cameras);
+});
+
+app.post("/api/cameras", (req, res) => {
+  const { name, kind = "webcam" } = req.body ?? {};
+  if (!name) return res.status(400).json({ error: "name is required" });
+
+  const info = db.prepare("INSERT INTO cameras (name, kind) VALUES (?, ?)").run(name, kind);
+  const camera = db.prepare("SELECT * FROM cameras WHERE id = ?").get(info.lastInsertRowid);
+  res.status(201).json(camera);
+});
+
+
 const PORT = 4000;
 app.listen(PORT, () => {
   console.log(`R6_Drone backend listening on http://localhost:${PORT}`);
