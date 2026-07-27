@@ -53,6 +53,48 @@ app.post("/api/cameras", (req, res) => {
   res.status(201).json(camera);
 });
 
+//sessions
+app.post("/api/sessions/start", (req, res) => {
+  const { camera_id } = req.body ?? {};
+  if (!camera_id) return res.status(400).json({ error: "camera_id is required" });
+
+  const info = db.prepare("INSERT INTO sessions (camera_id) VALUES (?)").run(camera_id);
+  const session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(info.lastInsertRowid);
+  res.status(201).json(session);
+});
+
+app.post("/api/sessions/:id/stop", (req, res) => {
+  const info = db
+    .prepare("UPDATE sessions SET end_time = datetime('now') WHERE id = ? AND end_time IS NULL")
+    .run(req.params.id);
+  if (info.changes === 0) return res.status(404).json({ error: "active session not found" });
+  res.json(db.prepare("SELECT * FROM sessions WHERE id = ?").get(req.params.id));
+});
+
+//events
+app.post("/api/events", (req, res) => {
+  const { session_id, label, score, bbox } = req.body ?? {};
+  if (!session_id || !label || score == null) {
+    return res.status(400).json({ error: "session_id, label, and score are required" });
+  }
+  const info = db
+    .prepare("INSERT INTO events (session_id, label, score, bbox) VALUES (?, ?, ?, ?)")
+    .run(session_id, label, score, JSON.stringify(bbox ?? null));
+  res.status(201).json({ id: info.lastInsertRowid });
+});
+
+app.get("/api/events", (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 50, 500);
+  const rows = db.prepare(`
+    SELECT e.id, e.label, e.score, e.created_at, s.camera_id, c.name AS camera_name
+    FROM events e
+    JOIN sessions s ON s.id = e.session_id
+    JOIN cameras c ON c.id = s.camera_id
+    ORDER BY e.id DESC
+    LIMIT ?
+  `).all(limit);
+  res.json(rows);
+});
 
 const PORT = 4000;
 app.listen(PORT, () => {
