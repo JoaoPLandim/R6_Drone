@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 
 const db = new DatabaseSync("R6_Drone.db");
 db.exec("PRAGMA journal_mode = WAL;");
+db.exec("PRAGMA foreign_keys = ON;");
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS cameras (
@@ -39,7 +40,7 @@ app.get("/api/health", (req, res) => {
 });
 
 //cams
-app.get("api/cameras", (req, res) => {
+app.get("/api/cameras", (req, res) => {
     const cameras = db.prepare("SELECT * FROM cameras ORDER BY id").all();
     res.json(cameras);
 });
