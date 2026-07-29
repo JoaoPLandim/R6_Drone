@@ -14,6 +14,8 @@ export default function WebcamFeed(){
     const loopRef = useRef(null);
     const [isLoading, setIsLoading] = useState(false);
     const [detections, setDetections] = useState([]);
+    const sessionRef = useRef(null);      // the active session row from the backend
+    const lastLoggedRef = useRef({});     // { "person": timestamp, "cup": timestamp }
 
     // camera startup
     async function startCamera(){
@@ -35,6 +37,28 @@ export default function WebcamFeed(){
             //start loop to  detect objects
             loopRef.current = setInterval(detectFrame, 400);
 
+            //either find or register this camera in the backend
+            const cameras = await (await fetch("/api/cameras")).json();
+            let cam = cameras.find((c) => c.kind === "webcam");
+            if (!cam) {
+            cam = await (
+                await fetch("/api/cameras", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: "Laptop webcam", kind: "webcam" }),
+                })
+            ).json();
+            }
+
+            //open session
+            sessionRef.current = await (
+            await fetch("/api/sessions/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ camera_id: cam.id }),
+            })
+            ).json();
+
             setIsActive(true);
         } catch (err){
             setError(err.message);
@@ -46,6 +70,10 @@ export default function WebcamFeed(){
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
 
+        if (sessionRef.current) {
+        fetch(`/api/sessions/${sessionRef.current.id}/stop`, { method: "POST" }).catch(() => {});
+        sessionRef.current = null;
+}
         if (videoRef.current) videoRef.current.srcObject = null;
         const ctx = canvasRef.current?.getContext("2d");
         ctx?.clearRect(0, 0, 640, 480);
@@ -63,6 +91,23 @@ export default function WebcamFeed(){
         const preds = (await model.detect(video)).filter((p) => p.score >= 0.55);
         setDetections(preds);
         drawBoxes(preds);
+        const now = Date.now();
+        for (const p of preds) {
+        const last = lastLoggedRef.current[p.class] ?? 0;
+        if (now - last > 10000 && sessionRef.current) {
+            lastLoggedRef.current[p.class] = now;
+            fetch("/api/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                session_id: sessionRef.current.id,
+                label: p.class,
+                score: Number(p.score.toFixed(3)),
+                bbox: p.bbox.map((n) => Math.round(n)),
+            }),
+            }).catch(() => {});
+        }
+        }
     }
 
     function drawBoxes(preds){
