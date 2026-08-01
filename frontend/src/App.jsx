@@ -1,13 +1,14 @@
 import WebcamFeed from "./components/webcam.jsx";
-import "./App.css";
+import EventLog from "./components/EventLog.jsx";
 
-function App() {
+export default function App() {
   return (
-    <>
-      <h1>Webcam Test</h1>
-      <WebcamFeed />
-    </>
+    <div>
+      <h1>R6 Drone Console</h1>
+      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
+        <WebcamFeed />
+        <EventLog />
+      </div>
+    </div>
   );
 }
-
-export default App;

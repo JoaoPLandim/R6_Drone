@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
 import "@tensorflow/tfjs";
 
@@ -73,7 +73,7 @@ export default function WebcamFeed(){
         if (sessionRef.current) {
         fetch(`/api/sessions/${sessionRef.current.id}/stop`, { method: "POST" }).catch(() => {});
         sessionRef.current = null;
-}
+    }
         if (videoRef.current) videoRef.current.srcObject = null;
         const ctx = canvasRef.current?.getContext("2d");
         ctx?.clearRect(0, 0, 640, 480);
@@ -125,6 +125,10 @@ export default function WebcamFeed(){
             ctx.fillText(`${p.class} ${(p.score * 100).toFixed(0)}%`, x+4, y-6);
         }
     }
+
+    useEffect(() => {
+        return () => stopCamera();
+    }, []);
 
     return(
         <div>
