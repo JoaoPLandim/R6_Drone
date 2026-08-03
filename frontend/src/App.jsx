@@ -1,5 +1,6 @@
 import WebcamFeed from "./components/webcam.jsx";
 import EventLog from "./components/EventLog.jsx";
+import QueryBox from "./components/QueryBox.jsx";
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
         <WebcamFeed />
         <EventLog />
       </div>
+      <QueryBox />
     </div>
   );
 }
