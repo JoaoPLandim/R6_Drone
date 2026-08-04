@@ -129,8 +129,14 @@ app.post("/api/query", async (req, res) => {
   const { question } = req.body ?? {};
   if (!question) return res.status(400).json({ error: "question is required" });
 
+  const knownLabels = db.prepare("SELECT DISTINCT label FROM events").all().map((r) => r.label);
+
   const prompt = `You classify questions about a camera detection log into intents.
-  The log stores detected objects (labels like "person", "cell phone", "cup") with timestamps.
+  The log currently contains these detected object labels: ${JSON.stringify(knownLabels)}
+  (the detector is COCO-SSD, so other COCO class names are also possible)
+
+  Map the user's wording to the closest matching label — e.g. "phone" -> "cell phone",
+  "someone" -> "person". If they ask about something unrelated to any label, use "unknown".
 
   Respond with ONLY a JSON object, no markdown fences, in one of these shapes:
   {"intent":"last_seen","label":"<object name>"}   - when did X last appear
