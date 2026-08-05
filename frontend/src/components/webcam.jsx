@@ -1,7 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
-import "@tensorflow/tfjs";
-
+import * as tf from "@tensorflow/tfjs";
 
 // startup setup
 export default function WebcamFeed(){
@@ -15,18 +14,22 @@ export default function WebcamFeed(){
     const canvasRef = useRef(null);
     const modelRef = useRef(null);
     const loopRef = useRef(null);
+    const runningRef = useRef(false);
     const [isLoading, setIsLoading] = useState(false);
     const [detections, setDetections] = useState([]);
     const sessionRef = useRef(null);      // the active session row from the backend
     const lastLoggedRef = useRef({});     // { "person": timestamp, "cup": timestamp }
-
+    const [debug, setDebug] = useState("");
+    const tickRef = useRef(0);
+    const showDebug = params.get("debug") === "1";
+    
     // camera startup
     async function startCamera(){
         setError(null);
+        setIsLoading(true);
         try{
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: {width: 640, height: 480},
-                audio: false,
+                video: { width: 640, height: 480, facingMode: camKind === "phone" ? "environment" : "user" },
             });
 
             streamRef.current = stream;
@@ -34,12 +37,10 @@ export default function WebcamFeed(){
 
             //load model (cocossd) once, to be reused
             if (!modelRef.current){
-                modelRef.current = await cocoSsd.load();
+                modelRef.current = await cocoSsd.load({ base: "lite_mobilenet_v2" });
             }
-
-            //start loop to  detect objects
-            loopRef.current = setInterval(detectFrame, 400);
-
+            try { await tf.setBackend("cpu"); await tf.ready(); } catch {}
+            setDebug(`backend=${tf.getBackend()}`);
             //either find or register this camera in the backend
             const cameras = await (await fetch(("/api/cameras"))).json();
             let cam = cameras.find((c) => c.kind === camKind);
@@ -62,39 +63,63 @@ export default function WebcamFeed(){
             })
             ).json();
 
+            //start loop to  detect objects
+            runningRef.current = true;
+            detectLoop();
+
             setIsActive(true);
         } catch (err){
             stopCamera();
             setError(err.message);
+        } finally {
+            setIsLoading(false); //happens if success or failure
         }
     }
 
     function stopCamera(){
-        clearInterval(loopRef.current);
+        runningRef.current = false;
+        clearTimeout(loopRef.current);
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
 
         if (sessionRef.current) {
         fetch(`/api/sessions/${sessionRef.current.id}/stop`, { method: "POST" }).catch(() => {});
         sessionRef.current = null;
-    }
+        }
         if (videoRef.current) videoRef.current.srcObject = null;
         const ctx = canvasRef.current?.getContext("2d");
         ctx?.clearRect(0, 0, 640, 480);
         setDetections([]);
         setIsActive(false);
+
     }
 
+    async function detectLoop() {
+        if (!runningRef.current) return;
+        try {
+            await detectFrame();
+        } catch (err) {
+            setError("Detection error: " + err.message);
+        }
+        if (runningRef.current) {
+            loopRef.current = setTimeout(detectLoop, 200);
+        }
+    }
     async function detectFrame(){
         const video = videoRef.current;
         const model = modelRef.current;
         if(!video || !model || video.readyState < 2){
             return;
         }
-
-        const preds = (await model.detect(video)).filter((p) => p.score >= 0.55);
+        const raw = await model.detect(video, 20, 0.1);
+        const preds = raw.filter((p) => p.score >= 0.55);
         setDetections(preds);
         drawBoxes(preds);
+
+        tickRef.current++;
+        const top = raw[0] ? `${raw[0].class}:${raw[0].score.toFixed(2)}` : "none";
+        setDebug(`backend=${tf.getBackend()} video=${video.videoWidth}x${video.videoHeight} ticks=${tickRef.current} raw=${raw.length} top=${top}`);
+
         const now = Date.now();
         for (const p of preds) {
         const last = lastLoggedRef.current[p.class] ?? 0;
@@ -137,6 +162,7 @@ export default function WebcamFeed(){
     return(
         <div>
             <p>Camera Device: {camName}</p>
+            {showDebug && <p style={{ fontFamily: "monospace", fontSize: 12 }}>{debug}</p>}
             <div style={{ position: "relative", width: 640, height: 480 }}>
                 <video ref={videoRef} autoPlay playsInline muted width={640} height={480} />
                 <canvas
