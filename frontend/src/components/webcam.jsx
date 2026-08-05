@@ -5,6 +5,9 @@ import "@tensorflow/tfjs";
 
 // startup setup
 export default function WebcamFeed(){
+    const params = new URLSearchParams(window.location.search);
+    const camKind = params.get("cam") ?? "webcam";// "phone" or "webcam"
+    const camName = camKind === "phone" ? "Phone camera" : "Laptop webcam";
     const videoRef = useRef(null);
     const streamRef = useRef(null);
     const [isActive, setIsActive] = useState(false);
@@ -38,16 +41,16 @@ export default function WebcamFeed(){
             loopRef.current = setInterval(detectFrame, 400);
 
             //either find or register this camera in the backend
-            const cameras = await (await fetch("/api/cameras")).json();
-            let cam = cameras.find((c) => c.kind === "webcam");
+            const cameras = await (await fetch(("/api/cameras"))).json();
+            let cam = cameras.find((c) => c.kind === camKind);
             if (!cam) {
-            cam = await (
-                await fetch("/api/cameras", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: "Laptop webcam", kind: "webcam" }),
-                })
-            ).json();
+                cam = await (
+                    await fetch("/api/cameras", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: camName, kind: camKind }),
+                    })
+                ).json();
             }
 
             //open session
@@ -61,6 +64,7 @@ export default function WebcamFeed(){
 
             setIsActive(true);
         } catch (err){
+            stopCamera();
             setError(err.message);
         }
     }
@@ -132,6 +136,7 @@ export default function WebcamFeed(){
 
     return(
         <div>
+            <p>Camera Device: {camName}</p>
             <div style={{ position: "relative", width: 640, height: 480 }}>
                 <video ref={videoRef} autoPlay playsInline muted width={640} height={480} />
                 <canvas
